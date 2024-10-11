@@ -1,0 +1,131 @@
+---
+title: "p8105_hw3_jt3466"
+author: "Johnstone Tcheou"
+date: "2024-10-10"
+output: github_document
+---
+
+# Homework 3 
+
+The `tidyverse` and packages have been loaded. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(p8105.datasets)
+```
+
+## Problem 1
+
+```{r p1 exploration}
+data("ny_noaa")
+
+ny_noaa |> 
+  summary()
+
+ny_noaa |> 
+  head()
+```
+This dataset has `r ny_noaa |> nrow()` observations and `r ny_noaa |> ncol()` 7 variables. The dataset consists of daily weather data from `r ny_noaa |> pull(date) |> min()` to `r ny_noaa |> pull(date) |> max()` for `r ny_noaa |> pull(id) |> unique() |> length()` different weather stations around NYC. The data is grouped by station, identified by weather station ID (`id`) in ascending date order, with observations for precipitation in 10ths of a mm (`prcp`), snowfall in mm (`snow`), snow depth in mm (`snwd`), max temperature in degrees C (`tmax`), and minimum temperature in degrees C (`tmin`).
+
+The max temperature and minimum temperature variables are set to be character variables, so they should be changed to a numeric type instead like float to retain the 10ths of an mm precision. 
+
+```{r p1 questions}
+ny_noaa <- ny_noaa |> 
+  mutate(
+    tmax = as.double(tmax, digits = 2),
+    tmin = as.double(tmin, digits = 2)
+  ) 
+
+ny_noaa |> 
+  summary()
+
+mode()
+```
+
+After changing the temperature variables to be a more sensible data type, there are a variety of missing values and less reasonable observations, like a minimum snow fall of `r ny_noaa |> pull(snow) |> min(na.rm = TRUE)` mm, a minimum maximum temperature of `r ny_noaa |> pull(tmax) |> min(na.rm = TRUE)` degrees C, a minimum minimum temperature of `r ny_noaa |> pull(tmin) |> min(na.rm = TRUE)` degrees C, and a 25th percentile of minimum temperature of `r ny_noaa |> pull(tmin) |> quantile(0.25, na.rm = TRUE)`. These are likely data entry errors, as some of these temperatures are just impossible to survive in.
+
+For missing values, there are `r ny_noaa |> pull(prcp) |> is.na() |> sum()` missing values for precipitation, `r ny_noaa |> pull(snow) |> is.na() |> sum()` missing values for snowfall, `r ny_noaa |> pull(prcp) |> is.na() |> sum()` missing values for snowdepth. 
+
+
+
+## Problem 2
+
+The demographic data is more or less in long format, but the accelerometer data is in wide format, with a variable for each reading of the 1440 minutes of the 24 hour day.
+
+This accelerometer data will need to be pivoted longer prior to joining. The left join is done on the accelerometer data, as if there are participants with no accelerometer data, it does not make much sense to include them. This way, only participants with accelerometer are retained. The demographic variables are moved to be first after `SEQN`, followed by the reading for that given minute.
+
+```{r p2 initial tidy and merge}
+demog_df <- read_csv("data/nhanes_covar.csv", skip = 4, na = c("NA", "", "."))
+
+head(demog_df)
+
+accel_df <- read_csv("data/nhanes_accel.csv", na = c("NA", "", "."))
+
+head(accel_df)
+
+accel_df <- accel_df |> 
+  pivot_longer(
+    cols = min1:min1440,
+    values_to = "reading",
+    names_to = "min",
+    names_prefix = "min"
+  )
+
+mims_df <- accel_df |> 
+  left_join(
+    demog_df,
+    by = join_by(SEQN)
+  ) |> 
+  select(SEQN, sex, age, BMI, education, everything())
+
+head(mims_df)
+```
+
+After the data is merged, we need to exclude participants below 21 years old, remove participants without demographic data, and change variables to sensible variable classes, i.e. `min` should be a double instead and factors should be introduced to `education` and `sex` to introduce levels. 
+
+```{r p2 further cleaning}
+mims_df <- mims_df |> 
+  filter(age > 21) |> 
+  drop_na(sex, age, BMI, education) |> 
+  mutate(
+    min = as.double(min),
+    sex = 
+      case_match(
+        sex,
+        1 ~ "Male",
+        2 ~ "Female"
+      ),
+    sex = factor(sex),
+    education =
+      case_match(
+        education,
+        1 ~ "Less than high school",
+        2 ~ "High school equivalent",
+        3 ~ "More than high school"
+      ),
+    education = factor(education, levels = c("Less than high school", "High school equivalent", "More than high school"))
+  )    
+```
+
+Once the data is cleaned further to keep only the observations we want to analyze, we can put them into a table and visualize the age distributions by gender and education.
+
+```{r p2 table and distributions}
+mims_df |> 
+  group_by(education, sex) |> 
+  summarize(count = n()) |> 
+  knitr::kable()
+
+mims_df |> 
+  group_by(education, sex, age) |> 
+  summarize(count = n()) |> 
+  ggplot(aes(x = sex, y = age, fill = sex)) +
+  geom_violin() +
+  labs(y = "Age (years)", x = "Sex", fill = "Sex") +
+  facet_grid(. ~ education) 
+```
+In the less than high school group, the women tend to be older, with the lowest female age around 27 and the lowest male age around 23. The males are somewhat bimodal, with a pronounced hump around 45 and a smaller hump towards 75. In contrast, the females are more or less smooth from 45 up to 70.
+
+Among the high school equivalent group, the age distribution for women is an inverted pyramid, where there are fewer younger women, while the age distribution for men is more of a typical pyramid with fewer older men and a slight peak just under 60 years old. For the less than high school 
+
+Lastly, within the more than high school group, both distributions are skewed towards younger ages. There is a hump among females around 35 and among males around 45.
