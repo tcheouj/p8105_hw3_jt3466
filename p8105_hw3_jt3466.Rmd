@@ -7,12 +7,14 @@ output: github_document
 
 # Homework 3 
 
-The `tidyverse` and packages have been loaded. 
+The `tidyverse`, `p8105.datasets`, `patchwork`, and `ggridges` packages have been loaded. 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(p8105.datasets)
+library(patchwork)
+library(ggridges)
 ```
 
 ## Problem 1
@@ -26,30 +28,73 @@ ny_noaa |>
 ny_noaa |> 
   head()
 ```
+
 This dataset has `r ny_noaa |> nrow()` observations and `r ny_noaa |> ncol()` 7 variables. The dataset consists of daily weather data from `r ny_noaa |> pull(date) |> min()` to `r ny_noaa |> pull(date) |> max()` for `r ny_noaa |> pull(id) |> unique() |> length()` different weather stations around NYC. The data is grouped by station, identified by weather station ID (`id`) in ascending date order, with observations for precipitation in 10ths of a mm (`prcp`), snowfall in mm (`snow`), snow depth in mm (`snwd`), max temperature in degrees C (`tmax`), and minimum temperature in degrees C (`tmin`).
 
 The max temperature and minimum temperature variables are set to be character variables, so they should be changed to a numeric type instead like float to retain the 10ths of an mm precision. 
 
-```{r p1 questions}
+```{r p1 import and cleaning}
 ny_noaa <- ny_noaa |> 
   mutate(
     tmax = as.double(tmax, digits = 2),
-    tmin = as.double(tmin, digits = 2)
+    tmin = as.double(tmin, digits = 2),
+    month = month(date),
+    year = year(date)
   ) 
 
 ny_noaa |> 
   summary()
-
-mode()
 ```
 
 After changing the temperature variables to be a more sensible data type, there are a variety of missing values and less reasonable observations, like a minimum snow fall of `r ny_noaa |> pull(snow) |> min(na.rm = TRUE)` mm, a minimum maximum temperature of `r ny_noaa |> pull(tmax) |> min(na.rm = TRUE)` degrees C, a minimum minimum temperature of `r ny_noaa |> pull(tmin) |> min(na.rm = TRUE)` degrees C, and a 25th percentile of minimum temperature of `r ny_noaa |> pull(tmin) |> quantile(0.25, na.rm = TRUE)`. These are likely data entry errors, as some of these temperatures are just impossible to survive in.
 
 For missing values, there are `r ny_noaa |> pull(prcp) |> is.na() |> sum()` missing values for precipitation, `r ny_noaa |> pull(snow) |> is.na() |> sum()` missing values for snowfall, `r ny_noaa |> pull(prcp) |> is.na() |> sum()` missing values for snowdepth. 
 
+# What are the most commonly observed values for snowfall? Why?
+
+```{r snowfall}
+ny_noaa |> 
+  group_by(snow) |> 
+  summarize(count = n()) |> 
+  arrange(desc(count))
+```
+
+The most commonly observed snowfall value is 0 mm with `r ny_noaa |> group_by(snow) |> summarize(count = n()) |> arrange(desc(count)) |>  head(n = 1) |> pull(count)` observations. This makes since given snow is only for a few months in a year. The next most observed value, besides `NA`, is 25, 13, and 51 mm. 
+
+```{r avg max January temp vs years}
+ny_noaa |> 
+  drop_na() |> 
+  filter(month == 1 | month == 7) |> 
+  group_by(month, year, id) |> 
+  summarize(avg_tmax = mean(tmax, na.rm = TRUE)) |> 
+  ggplot(aes(x = year, y = avg_tmax,  fill = month)) +
+  geom_bar(stat = "identity") +
+  facet_grid(. ~ month)
+```
+- There do not really seem to be any outliers.
+- Lots of variation around 0 degrees for January average max temperatures. 
+- Average max temperatures in July actually seem to be decreasing over the years, interestingly enough. 
+
+```{r two panel plot}
+tmax_tmin <- ny_noaa |> 
+  drop_na() |> 
+  ggplot(aes(x = tmin, y = tmax)) + 
+    geom_hex()
+
+snowfall_dist <- ny_noaa |> 
+  drop_na() |> 
+  filter((snow > 0 & snow < 100)) |> 
+  group_by(year) |> 
+  ggplot(aes(x = snow, y = as.factor(year))) +
+  geom_density_ridges()
+
+tmax_tmin + snowfall_dist
+```
 
 
 ## Problem 2
+
+# Import and tidy data
 
 The demographic data is more or less in long format, but the accelerometer data is in wide format, with a variable for each reading of the 1440 minutes of the 24 hour day.
 
@@ -108,24 +153,291 @@ mims_df <- mims_df |>
   )    
 ```
 
-Once the data is cleaned further to keep only the observations we want to analyze, we can put them into a table and visualize the age distributions by gender and education.
+# Table and graphs by gender and education level
+
+Once the data is cleaned further to keep only the observations we want to analyze, we can put them into a table and visualize the age distributions by gender and education. 
+
+First, group the dataframe by `education` and `sex`, then get the total number of participants per education and sex combination using `summarize` and `n()`. Pivot the data wider for the table to get the counts per sex each in their own column, with education status by rows. Pipe this output into `kable` for a nice looking table.
+
+For the graphs, there are separate violin graphs by education level, with female participants in red and male participants in red. Age is on the y axis and sex is on the x axis. 
 
 ```{r p2 table and distributions}
 mims_df |> 
   group_by(education, sex) |> 
   summarize(count = n()) |> 
-  knitr::kable()
+  pivot_wider(
+    names_from = sex,
+    values_from = count
+  ) |> 
+  knitr::kable(
+    col.names = c("Education", "Female", "Male")
+  )
 
 mims_df |> 
   group_by(education, sex, age) |> 
   summarize(count = n()) |> 
   ggplot(aes(x = sex, y = age, fill = sex)) +
-  geom_violin() +
-  labs(y = "Age (years)", x = "Sex", fill = "Sex") +
+  geom_violin(alpha = 0.5) +
+  stat_summary(fun = "median") + 
+  labs(
+    title = "Age distributions of participants",
+    subtitle = "Stratified by sex and education",
+    y = "Age (years)", 
+    x = "Sex", 
+    fill = "Sex") +
   facet_grid(. ~ education) 
 ```
+
 In the less than high school group, the women tend to be older, with the lowest female age around 27 and the lowest male age around 23. The males are somewhat bimodal, with a pronounced hump around 45 and a smaller hump towards 75. In contrast, the females are more or less smooth from 45 up to 70.
 
 Among the high school equivalent group, the age distribution for women is an inverted pyramid, where there are fewer younger women, while the age distribution for men is more of a typical pyramid with fewer older men and a slight peak just under 60 years old. For the less than high school 
 
 Lastly, within the more than high school group, both distributions are skewed towards younger ages. There is a hump among females around 35 and among males around 45.
+
+# Total activity by age, sex, and education level
+
+In order to get the total activity for an individual, we need to group by an individual's identifier, `SEQN`, along with their demographic variables i.e. `sex`, `age`, and `education` for later visualization, and then `summarize` using `sum` to sum the readings over the 24-hour period, naming it as a variable `total_activity`.
+
+As above, the scatterplots are separated by education level, with female participants in red and male participants in red. Total activity over the 24 hour period is on the Y axis and age is on the x axis. A smooth loess curve is overlaid on top of the scatter points. 
+
+```{r total activity}
+mims_df |> 
+  group_by(SEQN, sex, age, BMI, education) |> 
+  summarize(total_activity = sum(reading)) |> 
+  ggplot(aes(x = age, y = total_activity, color = sex)) + 
+  geom_point(alpha = 0.5) +
+  geom_smooth(se = FALSE) +
+  labs(
+    title = "Total physical activity registered by accelerometer over 24 hours",
+    subtitle = "Stratified by sex and education",
+    y = "Total activity", 
+    x = "Age (years)", 
+    color = "Sex"
+    ) +
+  facet_grid(. ~ education) 
+
+```
+Some observations from the above graphs:
+
+- Among the less than high school group,
+  - The points show a somewhat negative linear relationship, with activity decreasing as age increases.
+  - The trendline somewhat has two modes, with humps around the 25 and 60 year ranges in both sexes.
+  - There is a sharp decline in activity in both sexes after the 60 year hump.
+  - Females have more total physical activity until around 37 years old where males start to overtake the females.
+  - The highest total activity among the less than high school group is higher than the highest total activity in the  high school equivalent group.
+- Among the high school equivalent group,
+  - The points also show a slight negative linear relationship, but with greater scatter and variance than the less than high school group.
+  - There is also a stronger bimodal trend with the loess curves, suggesting against a linear relationship between age and total activity.
+  - The largest peak is around 40 years old with a smaller peak around 70 years old.
+  - Females have more total activity than males for most of this group.
+- Among the more than high school group,
+  - There appear to be much many more participants with more than high school education than the other education levels.
+  - The linear relationship is less clear in this group, with more points scattered around and greater variance at the younger ages than in the older ages.
+  - There is a notable outlier with activity near 0 (301 specifically, with `SEQN` `r mims_df |> group_by(SEQN, sex, age, BMI, education) |> summarize(total_activity = sum(reading)) |> arrange(total_activity) |> head(n=1) |> pull(SEQN)`), which may warrant revisiting to see if anything happened during data entry for this individual.
+
+## Problem 3 
+
+# Import and tidy data
+
+First step is to import the data for of each of the timepoints using `read_csv`, catching potential `NA` values like `""`. `"."`, or `"NA"`. 
+
+Afterwards, the data is already in long format, with tidied variable names (no spaces, all lowercase). In anticipation of combining the datasets, create a variable for the year called `year` and month called `month` to identify which dataset each observation came from. Combine the 4 datasets using `bind_rows` and pipe it into `drop_na()` to get rid of `NA` observations. Save this tidied dataset as `citi_df`.
+
+```{r import and tidy citi}
+
+jan_20_citi <- read_csv("data/Jan 2020 Citi.csv", na = c("", ".", "NA")) |>
+  mutate(
+    month = "January",
+    year = "2020"
+  )
+jul_20_citi <- read_csv("data/July 2020 Citi.csv", na = c("", ".", "NA")) |> 
+  mutate(
+    month = "July",
+    year = "2020"
+  )
+jan_24_citi <- read_csv("data/Jan 2024 Citi.csv", na = c("", ".", "NA")) |> 
+  mutate(
+    month = "January",
+    year = "2024"
+  )
+jul_24_citi <- read_csv("data/July 2024 Citi.csv", na = c("", ".", "NA")) |> 
+  mutate(
+    month = "July",
+    year = "2024"
+  )
+
+citi_df <- bind_rows(jan_20_citi, jul_20_citi, jan_24_citi, jul_24_citi) |> 
+  drop_na()
+```
+
+# Rides by month and membership status
+
+Once `citi_df` is created, group it by `year`, `month`, and `member_casual` to separate casual riders and CitiBike members. Calculate the total number of rides per combination of membership status, month, and year using `summarize` and `n()`. Pivot this summarized output wider for enhanced readability, creating a separate column for total rides by casual users and total rides by members for that given month. Pipe the pivoted output into `kable()` to make for a readable table. 
+
+```{r table by time and membership}
+citi_df |> 
+  group_by(year, month, member_casual) |> 
+  summarize(total_rides = n()) |> 
+  pivot_wider(
+    names_from = c(member_casual),
+    names_prefix = "total_rides_",
+    values_from = total_rides
+  ) |> 
+  knitr::kable(col.names = c("Year", "Month", "Number of rides from casual users", "Number of rides from members")) 
+```
+
+Understandably, there are the least rides taken early on in January 2020, likely due to social distancing. However, there was a not much a decline in rides by members in that timeframe, while most of the decline happened in casual members. By July, casual rides increased, as did member rides, but on a smaller scale relative to the January 2020 rides. Interestingly, in January 2024, there was a decrease in the casual rides while member rides increased slightly. July 2024 was the apex of rides, with more than double the member rides and almost 5 times the casual rides. 
+
+# 5 most popular stations in July 2024
+
+First, we need to filter for only observations in July 2024, using `filter` and the conditions of `year == 2024` and `month = 7`. Then, we can group by `start_station_name` and then `summarize` with `n()` to get the total rides originating from these starting stations. We can then `arrange` by `total_rides_from` in descending order to get the most popular stations at the top, and use `head()` to get the first 5 observations, i.e. the 5 most popular stations only. There is no pivoting wider needed, so we can just pipe it into `kable()` and use the `col.names` argument to label columns more explicitly.
+
+```{r 5 most popular stations}
+citi_df |> 
+  filter(year == "2024" & month == "July") |> 
+  group_by(start_station_name) |> 
+  summarize(total_rides_from = n()) |> 
+  arrange(desc(total_rides_from)) |> 
+  head(n = 5) |> 
+  knitr::kable(
+    col.names = c("5 most popular stations", "Total rides from these stations")
+  )
+```
+
+# Plot of time against median ride duration 
+
+We need to create separate boxplots for `weekdays` against ride duration, `month` against ride duration, and `year` against ride duration. For `weekdays`, we have the additional step of using `fct_relevel` to reorder the factor levels so that the corresponding boxplots are in corresponding order of the days of the week, rather than alphabetical. The graphs are then combined in one figure using the `patchwork` package, with a title and subtitle overlaid the grouped boxplots. 
+
+```{r time vs median ride}
+
+
+# citi_df |> 
+#   ggplot(aes(x = year, y = duration, color = year)) +
+#   geom_boxplot() + 
+#   geom_boxplot(aes(x = weekdays, y = duration, color = weekdays)) +
+#   geom_boxplot(aes(x = month, y = duration, color = month))
+
+
+days_plot <- citi_df |> 
+  mutate(
+    weekdays = forcats::fct_relevel(weekdays, c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+  ) |> 
+  ggplot(aes(x = weekdays, y = duration, color = weekdays)) +
+  geom_boxplot(show.legend = FALSE) +
+  labs(
+    x = "Days of the week",
+    y = "Ride duration"
+  ) +
+  viridis::scale_color_viridis(discrete = TRUE, option = "turbo") +
+  theme(legend.position = "none")
+
+months_plot <- citi_df |> 
+  ggplot(aes(x = month, y = duration, color = month)) +
+  geom_boxplot(show.legend = FALSE) +
+  labs(
+    x = "Month",
+    y = "Ride duration"
+  ) +
+  viridis::scale_color_viridis(discrete = TRUE, option = "viridis") +
+  theme(legend.position = "none")
+
+years_plot <- citi_df |> 
+  ggplot(aes(x = year, y = duration, color = year)) +
+  geom_boxplot() + 
+  labs(
+    x = "Year",
+    y = ""
+  ) + 
+  viridis::scale_color_viridis(discrete = TRUE, option = "rocket") +
+  theme(legend.position = "none")
+
+(months_plot+years_plot)/days_plot + plot_annotation(title = "Factors in median ride duration",
+                                                     subtitle = "1% of all rides with total duration < 4 hours",
+                                                     caption = "Data from NYC Citi Bike system")
+
+# citi_df |> 
+#   group_by(weekdays, month, year) |> 
+#   summarize(median_duration = median(duration)) |> 
+#   mutate(
+#     month = as.character(month),
+#     year = as.character(year)
+#   ) |> 
+#   pivot_longer(
+#     cols = c(weekdays, month, year),
+#     values_to = "time"
+#   ) |> 
+#   ggplot(aes(x = time, y = median_duration)) +
+#   geom_point()
+  
+```
+- July has a longer median ride duration than January, which makes sense, given the summer weather in July is likely more conducive to biking than January.
+- Interestingly, it seems median ride duration was longer in 2020. However, this has a slightly wider interquartile range compared to 2024.
+- The weekdays have a relatively similar median, with a slightly higher median duration on Thursdays. Comparatively, Saturday and Sunday have higher median durations and wider interquartile ranges, which makes sense given people have more time to ride bikes on the weekends. 
+
+# Impact of month, membership, and bike type on ride duration in 2024
+
+First, to get data on the factors involved in 2024 ride duration, we need to `filter` data to include only observations in 2024. Then, we can create separate graphs for `month` and ride duration, `membership` and ride duration, and `bike type` and ride duration. Violin plots are used for all 3 to depict the distribution of ride duration. The median is depicted as a black dot on the violin plot. Additional data manipulation is done for the `membership` and `bike type` plots to `mutate` their values to be capitalized and without underscores so they look better on the axis labels. The violin plots are grouped together side by side using the `patchwork` package and likewise has a title over the figure. 
+
+```{r 2024 ride duration factors}
+
+month_ride_2024 <- citi_df |> 
+  filter(year == "2024") |> 
+  ggplot(aes(x = month, y = duration, fill = month)) + 
+  geom_violin() + 
+  viridis::scale_fill_viridis(alpha = 0.7, discrete = TRUE, option = "rocket") +
+  stat_summary(fun = "median") +
+  labs(
+    y = "",
+    x = "Month"
+  ) + 
+  theme(legend.position = "none")
+
+membership_ride_2024 <- citi_df |> 
+  filter(year == "2024") |> 
+  mutate(
+    member_casual = case_match(
+      member_casual,
+      "member" ~ "Member",
+      "casual" ~ "Casual",
+      .default = member_casual
+    )
+  ) |> 
+  ggplot(aes(x = member_casual, y = duration, fill = member_casual)) + 
+  geom_violin() + 
+  viridis::scale_fill_viridis(alpha = 0.7, discrete = TRUE, option = "viridis") +
+  stat_summary(fun = "median") +
+  labs(
+    y = "",
+    x = "Membership status"
+  ) + 
+  theme(legend.position = "none")
+
+bike_type_ride_2024 <- citi_df |> 
+  filter(year == "2024") |> 
+  mutate(
+    rideable_type = case_match(
+      rideable_type,
+      "classic_bike" ~ "Classic bike",
+      "electric_bike" ~ "Electric bike",
+      .default = rideable_type
+    )
+  ) |>  
+  ggplot(aes(x = rideable_type, y = duration, fill = rideable_type)) + 
+  geom_violin() + 
+  viridis::scale_fill_viridis(alpha = 0.7, discrete = TRUE, option = "plasma") +
+  stat_summary(fun = "median") +
+  labs(
+    y = "",
+    x = "Bike type"
+  ) + 
+  theme(legend.position = "none")
+
+(month_ride_2024 + membership_ride_2024 + bike_type_ride_2024) + plot_annotation(title = "Factors in 2024 ride duration",
+                                                                                 subtitle = "1% of all rides with total duration < 4 hours",
+                                                                                 caption = "Data from NYC Citi Bike system")
+
+```
+
+- Between January and July, the median ride duration is slightly higher in July. There are a lot more rides in low duration below 12.5 mins among January rides, where there are more rides in July that are 25 mins and up. There is a higher maximum observation in the July rides as well.
+- There are a lot more members having shorter rides below 12.5 mins while casual riders are having longer duration rides. The median ride duration between the two are close, but slightly higher in casual rides. The maximum ride duration for casual rides is also higher than the maximum ride duration for member rides. 
+- Intriguingly, there are no appreciable differences between the distribution of ride duration between classic bikes and electric bikes. The medians are comparable and the observations cluster around the similar points. There is a slightly higher maximum among electric bikes, but that is about the only distinguishing point.
