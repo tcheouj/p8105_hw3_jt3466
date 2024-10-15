@@ -50,7 +50,7 @@ After changing the temperature variables to be a more sensible data type, there 
 
 For missing values, there are `r ny_noaa |> pull(prcp) |> is.na() |> sum()` missing values for precipitation, `r ny_noaa |> pull(snow) |> is.na() |> sum()` missing values for snowfall, `r ny_noaa |> pull(prcp) |> is.na() |> sum()` missing values for snowdepth. 
 
-# What are the most commonly observed values for snowfall? Why?
+### What are the most commonly observed values for snowfall? Why?
 
 ```{r snowfall}
 ny_noaa |> 
@@ -94,7 +94,7 @@ tmax_tmin + snowfall_dist
 
 ## Problem 2
 
-# Import and tidy data
+### Import and tidy data
 
 The demographic data is more or less in long format, but the accelerometer data is in wide format, with a variable for each reading of the 1440 minutes of the 24 hour day.
 
@@ -127,7 +127,7 @@ mims_df <- accel_df |>
 head(mims_df)
 ```
 
-After the data is merged, we need to exclude participants below 21 years old, remove participants without demographic data, and change variables to sensible variable classes, i.e. `min` should be a double instead and factors should be introduced to `education` and `sex` to introduce levels. 
+After the data is merged, we need to exclude participants below 21 years old, remove participants without demographic data, and change variables to sensible variable classes, i.e. `min` should be a double instead and factors should be introduced to `education` and `sex` to introduce levels. This gives us a final dataset size of `r nrow(mims_df)` observations and `r ncol(mims_df)` variables.
 
 ```{r p2 further cleaning}
 mims_df <- mims_df |> 
@@ -153,18 +153,20 @@ mims_df <- mims_df |>
   )    
 ```
 
-# Table and graphs by gender and education level
+### Table and graphs by gender and education level
 
 Once the data is cleaned further to keep only the observations we want to analyze, we can put them into a table and visualize the age distributions by gender and education. 
 
-First, group the dataframe by `education` and `sex`, then get the total number of participants per education and sex combination using `summarize` and `n()`. Pivot the data wider for the table to get the counts per sex each in their own column, with education status by rows. Pipe this output into `kable` for a nice looking table.
+First, group the dataframe by `education` and `sex`, then get the total number of participants per education and sex combination using `summarize` and `n()`. Pivot the data wider for the table to get the counts per sex each in their own column, with education status by rows. Pipe this output into `kable` for a nice looking table. 
+
+Out of the `r mims_df |> pull(SEQN) |> unique() |> length()` participants, 28 are females with less than high school education, 27 are males with less than high school education, 23 are females with high school equivalent education, 34 are males with high school equivalent education, 59 females have more than high school education, and 54 males have more than high school education. 
 
 For the graphs, there are separate violin graphs by education level, with female participants in red and male participants in red. Age is on the y axis and sex is on the x axis. 
 
 ```{r p2 table and distributions}
 mims_df |> 
   group_by(education, sex) |> 
-  summarize(count = n()) |> 
+  summarize(count = n_distinct(SEQN)) |> 
   pivot_wider(
     names_from = sex,
     values_from = count
@@ -194,7 +196,7 @@ Among the high school equivalent group, the age distribution for women is an inv
 
 Lastly, within the more than high school group, both distributions are skewed towards younger ages. There is a hump among females around 35 and among males around 45.
 
-# Total activity by age, sex, and education level
+### Total activity by age, sex, and education level
 
 In order to get the total activity for an individual, we need to group by an individual's identifier, `SEQN`, along with their demographic variables i.e. `sex`, `age`, and `education` for later visualization, and then `summarize` using `sum` to sum the readings over the 24-hour period, naming it as a variable `total_activity`.
 
@@ -235,9 +237,28 @@ Some observations from the above graphs:
   - The linear relationship is less clear in this group, with more points scattered around and greater variance at the younger ages than in the older ages.
   - There is a notable outlier with activity near 0 (301 specifically, with `SEQN` `r mims_df |> group_by(SEQN, sex, age, BMI, education) |> summarize(total_activity = sum(reading)) |> arrange(total_activity) |> head(n=1) |> pull(SEQN)`), which may warrant revisiting to see if anything happened during data entry for this individual.
 
+### Activity over the day by sex
+
+```{r activity by sex by education}
+mims_df |>  
+  ggplot(aes(x = min, y = reading, color = sex, fill = sex)) + 
+  geom_point(alpha = 0.052) +  
+  geom_smooth(aes(color = sex), se = FALSE) +
+  labs(
+    title = "24-hour physical activity registered by accelerometer",
+    subtitle = "Stratified by sex and education",
+    y = "Total activity", 
+    x = "Time (mins)", 
+    color = "Sex", 
+    fill = "Sex"
+    ) +
+  facet_grid(. ~ education) 
+```
+Based on the graph, most people are active by 8:30 AM. Males with higher than high school education are more active than other combinations of sex and education status, particularly between the 7 AM to 9 PM range. Females appear to be slightly more active than males throughout the day for high school equivalent education and more than high school education, though the gap between sexes is closer in the less than high school group. 
+
 ## Problem 3 
 
-# Import and tidy data
+### Import and tidy data
 
 First step is to import the data for of each of the timepoints using `read_csv`, catching potential `NA` values like `""`. `"."`, or `"NA"`. 
 
@@ -270,7 +291,7 @@ citi_df <- bind_rows(jan_20_citi, jul_20_citi, jan_24_citi, jul_24_citi) |>
   drop_na()
 ```
 
-# Rides by month and membership status
+### Rides by month and membership status
 
 Once `citi_df` is created, group it by `year`, `month`, and `member_casual` to separate casual riders and CitiBike members. Calculate the total number of rides per combination of membership status, month, and year using `summarize` and `n()`. Pivot this summarized output wider for enhanced readability, creating a separate column for total rides by casual users and total rides by members for that given month. Pipe the pivoted output into `kable()` to make for a readable table. 
 
@@ -288,7 +309,7 @@ citi_df |>
 
 Understandably, there are the least rides taken early on in January 2020, likely due to social distancing. However, there was a not much a decline in rides by members in that timeframe, while most of the decline happened in casual members. By July, casual rides increased, as did member rides, but on a smaller scale relative to the January 2020 rides. Interestingly, in January 2024, there was a decrease in the casual rides while member rides increased slightly. July 2024 was the apex of rides, with more than double the member rides and almost 5 times the casual rides. 
 
-# 5 most popular stations in July 2024
+### 5 most popular stations in July 2024
 
 First, we need to filter for only observations in July 2024, using `filter` and the conditions of `year == 2024` and `month = 7`. Then, we can group by `start_station_name` and then `summarize` with `n()` to get the total rides originating from these starting stations. We can then `arrange` by `total_rides_from` in descending order to get the most popular stations at the top, and use `head()` to get the first 5 observations, i.e. the 5 most popular stations only. There is no pivoting wider needed, so we can just pipe it into `kable()` and use the `col.names` argument to label columns more explicitly.
 
@@ -304,7 +325,7 @@ citi_df |>
   )
 ```
 
-# Plot of time against median ride duration 
+### Plot of time against median ride duration 
 
 We need to create separate boxplots for `weekdays` against ride duration, `month` against ride duration, and `year` against ride duration. For `weekdays`, we have the additional step of using `fct_relevel` to reorder the factor levels so that the corresponding boxplots are in corresponding order of the days of the week, rather than alphabetical. The graphs are then combined in one figure using the `patchwork` package, with a title and subtitle overlaid the grouped boxplots. 
 
@@ -374,7 +395,7 @@ years_plot <- citi_df |>
 - Interestingly, it seems median ride duration was longer in 2020. However, this has a slightly wider interquartile range compared to 2024.
 - The weekdays have a relatively similar median, with a slightly higher median duration on Thursdays. Comparatively, Saturday and Sunday have higher median durations and wider interquartile ranges, which makes sense given people have more time to ride bikes on the weekends. 
 
-# Impact of month, membership, and bike type on ride duration in 2024
+### Impact of month, membership, and bike type on ride duration in 2024
 
 First, to get data on the factors involved in 2024 ride duration, we need to `filter` data to include only observations in 2024. Then, we can create separate graphs for `month` and ride duration, `membership` and ride duration, and `bike type` and ride duration. Violin plots are used for all 3 to depict the distribution of ride duration. The median is depicted as a black dot on the violin plot. Additional data manipulation is done for the `membership` and `bike type` plots to `mutate` their values to be capitalized and without underscores so they look better on the axis labels. The violin plots are grouped together side by side using the `patchwork` package and likewise has a title over the figure. 
 
