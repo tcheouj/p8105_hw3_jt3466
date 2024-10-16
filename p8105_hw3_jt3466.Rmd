@@ -184,6 +184,7 @@ mims_df |>
   labs(
     title = "Age distributions of participants",
     subtitle = "Stratified by sex and education",
+    caption = "Data from NHANES",
     y = "Age (years)", 
     x = "Sex", 
     fill = "Sex") +
@@ -212,6 +213,7 @@ mims_df |>
   labs(
     title = "Total physical activity registered by accelerometer over 24 hours",
     subtitle = "Stratified by sex and education",
+    caption = "Data from NHANES",
     y = "Total activity", 
     x = "Age (years)", 
     color = "Sex"
@@ -247,6 +249,7 @@ mims_df |>
   labs(
     title = "24-hour physical activity registered by accelerometer",
     subtitle = "Stratified by sex and education",
+    caption = "Data from NHANES",
     y = "Total activity", 
     x = "Time (mins)", 
     color = "Sex", 
@@ -301,7 +304,8 @@ citi_df |>
     names_prefix = "total_rides_",
     values_from = total_rides
   ) |> 
-  knitr::kable(col.names = c("Year", "Month", "Number of rides from casual users", "Number of rides from members")) 
+  janitor::adorn_totals(c("row", "col")) |> 
+  knitr::kable(col.names = c("Year", "Month", "Number of rides from casual users", "Number of rides from members", "Total number of rides")) 
 ```
 
 Understandably, there are the least rides taken early on in January 2020, likely due to social distancing. However, there was a not much a decline in rides by members in that timeframe, while most of the decline happened in casual members. By July, casual rides increased, as did member rides, but on a smaller scale relative to the January 2020 rides. Interestingly, in January 2024, there was a decrease in the casual rides while member rides increased slightly. July 2024 was the apex of rides, with more than double the member rides and almost 5 times the casual rides. 
