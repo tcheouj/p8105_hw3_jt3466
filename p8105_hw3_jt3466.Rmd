@@ -131,7 +131,7 @@ After the data is merged, we need to exclude participants below 21 years old, re
 
 ```{r p2 further cleaning}
 mims_df <- mims_df |> 
-  filter(age > 21) |> 
+  filter(age >= 21) |> 
   drop_na(sex, age, BMI, education) |> 
   mutate(
     min = as.double(min),
@@ -242,7 +242,7 @@ Some observations from the above graphs:
 ```{r activity by sex by education}
 mims_df |>  
   ggplot(aes(x = min, y = reading, color = sex, fill = sex)) + 
-  geom_point(alpha = 0.052) +  
+  geom_point(alpha = 0.01) + 
   geom_smooth(aes(color = sex), se = FALSE) +
   labs(
     title = "24-hour physical activity registered by accelerometer",
@@ -265,7 +265,6 @@ First step is to import the data for of each of the timepoints using `read_csv`,
 Afterwards, the data is already in long format, with tidied variable names (no spaces, all lowercase). In anticipation of combining the datasets, create a variable for the year called `year` and month called `month` to identify which dataset each observation came from. Combine the 4 datasets using `bind_rows` and pipe it into `drop_na()` to get rid of `NA` observations. Save this tidied dataset as `citi_df`.
 
 ```{r import and tidy citi}
-
 jan_20_citi <- read_csv("data/Jan 2020 Citi.csv", na = c("", ".", "NA")) |>
   mutate(
     month = "January",
@@ -286,9 +285,7 @@ jul_24_citi <- read_csv("data/July 2024 Citi.csv", na = c("", ".", "NA")) |>
     month = "July",
     year = "2024"
   )
-
-citi_df <- bind_rows(jan_20_citi, jul_20_citi, jan_24_citi, jul_24_citi) |> 
-  drop_na()
+citi_df <- bind_rows(jan_20_citi, jul_20_citi, jan_24_citi, jul_24_citi) 
 ```
 
 ### Rides by month and membership status
@@ -330,67 +327,22 @@ citi_df |>
 We need to create separate boxplots for `weekdays` against ride duration, `month` against ride duration, and `year` against ride duration. For `weekdays`, we have the additional step of using `fct_relevel` to reorder the factor levels so that the corresponding boxplots are in corresponding order of the days of the week, rather than alphabetical. The graphs are then combined in one figure using the `patchwork` package, with a title and subtitle overlaid the grouped boxplots. 
 
 ```{r time vs median ride}
-
-
-# citi_df |> 
-#   ggplot(aes(x = year, y = duration, color = year)) +
-#   geom_boxplot() + 
-#   geom_boxplot(aes(x = weekdays, y = duration, color = weekdays)) +
-#   geom_boxplot(aes(x = month, y = duration, color = month))
-
-
-days_plot <- citi_df |> 
-  mutate(
-    weekdays = forcats::fct_relevel(weekdays, c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
-  ) |> 
-  ggplot(aes(x = weekdays, y = duration, color = weekdays)) +
-  geom_boxplot(show.legend = FALSE) +
+citi_df |> 
+  group_by(weekdays, month, year) |> 
+  summarize(median_duration = median(duration)) |> 
+  ggplot(aes(x = weekdays, y = median_duration, fill = month)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_grid(year ~ .) +
   labs(
     x = "Days of the week",
-    y = "Ride duration"
+    y = "Ride duration",
+    title = "Median ride duration across days, months, and years",
+    subtitle = "1% of all rides with total duration < 4 hours",
+    caption = "Data from NYC Citi Bike system"
   ) +
-  viridis::scale_color_viridis(discrete = TRUE, option = "turbo") +
-  theme(legend.position = "none")
-
-months_plot <- citi_df |> 
-  ggplot(aes(x = month, y = duration, color = month)) +
-  geom_boxplot(show.legend = FALSE) +
-  labs(
-    x = "Month",
-    y = "Ride duration"
-  ) +
-  viridis::scale_color_viridis(discrete = TRUE, option = "viridis") +
-  theme(legend.position = "none")
-
-years_plot <- citi_df |> 
-  ggplot(aes(x = year, y = duration, color = year)) +
-  geom_boxplot() + 
-  labs(
-    x = "Year",
-    y = ""
-  ) + 
-  viridis::scale_color_viridis(discrete = TRUE, option = "rocket") +
-  theme(legend.position = "none")
-
-(months_plot+years_plot)/days_plot + plot_annotation(title = "Factors in median ride duration",
-                                                     subtitle = "1% of all rides with total duration < 4 hours",
-                                                     caption = "Data from NYC Citi Bike system")
-
-# citi_df |> 
-#   group_by(weekdays, month, year) |> 
-#   summarize(median_duration = median(duration)) |> 
-#   mutate(
-#     month = as.character(month),
-#     year = as.character(year)
-#   ) |> 
-#   pivot_longer(
-#     cols = c(weekdays, month, year),
-#     values_to = "time"
-#   ) |> 
-#   ggplot(aes(x = time, y = median_duration)) +
-#   geom_point()
-  
+  viridis::scale_fill_viridis(discrete = TRUE, option = "viridis") 
 ```
+
 - July has a longer median ride duration than January, which makes sense, given the summer weather in July is likely more conducive to biking than January.
 - Interestingly, it seems median ride duration was longer in 2020. However, this has a slightly wider interquartile range compared to 2024.
 - The weekdays have a relatively similar median, with a slightly higher median duration on Thursdays. Comparatively, Saturday and Sunday have higher median durations and wider interquartile ranges, which makes sense given people have more time to ride bikes on the weekends. 
